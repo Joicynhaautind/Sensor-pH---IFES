@@ -1,0 +1,222 @@
+#include <U8glib.h>
+#include <Wire.h>
+
+// Definindo o display OLED usando I2C
+U8GLIB_SSD1306_128X64 display(U8G_I2C_OPT_NONE);
+
+// Definindo os pinos dos botões
+const int buttonUpPin = 8;
+const int buttonSelectPin = 7;
+const int buttonDownPin = 6;
+const int buttonBackPin = 5;  // Novo botão para voltar
+
+int selectedOption = 0;  // Índice da opção selecionada
+const int totalOptions = 2;  // Total de opções no menu
+String menuOptions[totalOptions] = {"ARENOSO", "ARGILOSO"};  // Opções no menu
+
+// Variáveis para cálculo de pH
+float calibracao_ph7 = 2.78;   // Tensão obtida em solução de calibração pH 7
+float calibracao_ph4 = 3.34;   // Tensão obtida em solução de calibração pH 4
+float calibracao_ph10 = 0.0;  // Tensão obtida em solução de calibração pH 10
+#define UTILIZAR_PH_10 false  // Habilita calibração entre pH 7 e 10
+
+float m;
+float b;
+float phdesejado = 6.5;
+float targ = 0.3;  // tipo de solo argiloso
+float tare = 0.5;  // tipo de solo arenoso
+float quantcal = 0; // quantidade de calcario
+
+int buf[10]; 
+int ph = 0;
+bool tipoSoloSelecionado = false;  // Nova variável para indicar se o tipo de solo foi selecionado
+
+void setup() {
+  Serial.begin(9600);
+   
+  display.firstPage();
+  do {
+    telainicio();
+  } while (display.nextPage());
+  delay(2000);
+
+  // Inicializa os pinos dos botões
+  pinMode(buttonUpPin, INPUT_PULLUP);
+  pinMode(buttonDownPin, INPUT_PULLUP);
+  pinMode(buttonSelectPin, INPUT_PULLUP);
+  pinMode(buttonBackPin, INPUT_PULLUP);  // Inicializa o botão "voltar"
+
+  // Inicializa a calibração de pH
+  if (calibracao_ph7 == 0 && calibracao_ph4 == 0 && calibracao_ph10 == 0) {
+    Serial.println("Erro - Necessário colocar os valores de calibração no código!");
+    erro01();
+    while (1);
+  }
+  
+  if (!UTILIZAR_PH_10 && calibracao_ph4 == 0 && calibracao_ph10 != 0 && calibracao_ph7 != 0) {
+    Serial.println("Erro - Você não marcou a opção UTILIZAR_PH_10 como true para utilizar pH 7 e 10.");
+    erro02();
+    while (1);
+  }
+
+  if (UTILIZAR_PH_10) {
+    m = (7.0 - 10.0) / (calibracao_ph7 - calibracao_ph10);
+    b = 10.0 - m * calibracao_ph10;
+  } else {
+    m = (4.0 - 7.0) / (calibracao_ph4 - calibracao_ph7);
+    b = 7.0 - m * calibracao_ph7;
+  }
+
+  // Exibe o menu inicial
+  displayMenu();
+}
+
+void loop() {
+  // Aguarda a seleção do tipo de solo antes de prosseguir
+  if (!tipoSoloSelecionado) {
+    // Verifica se o botão "cima" foi pressionado
+    if (digitalRead(buttonUpPin) == LOW) {
+      selectedOption--;
+      if (selectedOption < 0) selectedOption = totalOptions - 1;  // Loop para cima
+      displayMenu();
+      delay(200);  // Debounce do botão
+    }
+
+    // Verifica se o botão "baixo" foi pressionado
+    if (digitalRead(buttonDownPin) == LOW) {
+      selectedOption++;
+      if (selectedOption >= totalOptions) selectedOption = 0;  // Loop para baixo
+      displayMenu();
+      delay(200);  // Debounce do botão
+    }
+
+    // Verifica se o botão "selecionar" foi pressionado
+    if (digitalRead(buttonSelectPin) == LOW) {
+      tipoSoloSelecionado = true;  // Marca que o tipo de solo foi selecionado
+      selectOption();
+      delay(500);  // Delay maior para evitar múltiplas seleções rápidas
+    }
+  } else {
+    // Verifica se o botão "voltar" foi pressionado
+    if (digitalRead(buttonBackPin) == LOW) {
+      tipoSoloSelecionado = false;  // Retorna à seleção do tipo de solo
+      displayMenu();
+      delay(500);  // Delay para evitar múltiplos cliques rápidos
+    } else {
+      // Leitura do sensor de pH e cálculo da quantidade de calcário
+
+      for (int i = 0; i < 10; i++) {  // 10 amostras
+        buf[i] = analogRead(A0);      // Ler o sensor PH
+        delay(10);
+      }
+
+      for (int i = 0; i < 9; i++) {  // Ordena em ordem crescente
+        for (int j = i + 1; j < 10; j++) {
+          if (buf[i] > buf[j]) {
+            int temp = buf[i];
+            buf[i] = buf[j];
+            buf[j] = temp;
+          }
+        }
+      }
+
+      int valorMedio = 0;
+      for (int i = 2; i < 8; i++) {  // Realiza o valor médio utilizando 6 amostras
+        valorMedio += buf[i];
+      }
+
+      float tensao = (valorMedio * 5.0) / 1024.0 / 6;  // Média e conversão para volts
+      float ph = m * tensao + b;  // Converte para pH
+
+      // Cálculo da quantidade de calcário com base no tipo de solo selecionado
+      if (selectedOption == 0) {  // Arenoso
+        quantcal = (phdesejado - ph) / tare;
+      } else {  // Argiloso
+        quantcal = (phdesejado - ph) / targ;
+      } 
+
+      // Exibe os resultados no display
+      display.firstPage();
+      do {
+        telaph(ph);
+        telaQUANTCAL(quantcal);
+      } while (display.nextPage());
+      delay(1000);
+    }
+  }
+}
+
+void telainicio(){
+    display.setFont(u8g_font_10x20);
+    display.drawStr(5, 14, " BEM-VINDO ");
+    display.drawStr(17, 30, " MEDIDOR");
+    display.drawStr(25, 45, " DE PH");
+}
+void displayMenu() {
+  display.firstPage();  // Limpa a tela e prepara para o próximo desenho
+  do {
+    display.setFont(u8g_font_8x13B);  // Define o tamanho da fonte (6x10 pixels)
+    display.drawStr(0, 10, "Selecione o solo: ");
+    // Exibe as opções de menu
+    for (int i = 0; i < totalOptions; i++) {
+      if (i == selectedOption) {
+        display.drawStr(0,35 + i * 15, "> ");  // Marca a opção selecionada com '>'
+      } else {
+        display.drawStr(0,35 + i * 15, "  ");  // Espaço em branco para opções não selecionadas
+      }
+      display.setFont(u8g_font_10x20);  // Define o tamanho da fonte (6x10 pixels)
+      display.drawStr(25, 35 + i * 15, menuOptions[i].c_str());
+    }
+  } while (display.nextPage());
+}
+
+void selectOption() {
+  display.firstPage();
+  do {
+    display.setFont(u8g_font_7x14B);
+    display.drawStr(0, 10, "Voce selecionou:");
+    display.setFont(u8g_font_10x20);  // Define o tamanho da fonte (6x10 pixels)
+    display.drawStr(25, 35, menuOptions[selectedOption].c_str());
+  } while (display.nextPage());
+  delay(500);
+}
+
+void telaph(float ph) {
+  display.setFont(u8g_font_10x20);
+  display.drawStr(27, 16, "PH:");
+  String contStr = String(ph, 2);  // Converte o pH para String com 2 casas decimais
+  display.drawStr(57, 16, contStr.c_str());  // Exibe o valor
+}
+
+void telaQUANTCAL(float QUANTCAL) {
+  display.setFont(u8g_font_10x20);
+  display.drawStr(25, 45, "QUANTCAL");
+  String contStr = String(QUANTCAL, 3);  // Converte o valor para String com 3 casas decimais
+  display.drawStr(25, 60, contStr.c_str());  // Exibe o valor
+}
+
+void erro01() {
+  display.firstPage();
+  do {
+    display.setFont(u8g_font_10x20);
+    display.drawStr(15, 16, "!! ERRO !!");
+    display.setFont(u8g_font_8x13B);
+    display.drawStr(17, 26, " NECESSARIO");
+    display.drawStr(17, 39, " COLOCAR OS");
+    display.drawStr(17, 51, " VALORES DE");
+    display.drawStr(17, 62, " CALIBRACAO.");
+  } while (display.nextPage());
+}
+
+void erro02() {
+  display.firstPage();
+  do {
+    display.setFont(u8g_font_10x20);
+    display.drawStr(15, 16, "!! ERRO !!");
+    display.setFont(u8g_font_8x13B);
+    display.drawStr(3, 26, "MARCAR OPCAO DE");
+    display.drawStr(3, 39, "UTILIZAR_PH_10");
+    display.drawStr(3, 51, "PARA USAR");
+    display.drawStr(3, 62, "PH 7 E 10.");
+  } while (display.nextPage());
+}
