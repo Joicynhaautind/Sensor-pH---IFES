@@ -16,7 +16,7 @@ String menuOptions[totalOptions] = {"ARENOSO", "ARGILOSO"};  // Opções no menu
 
 // Variáveis para cálculo de pH
 float calibracao_ph7 = 2.78;   // Tensão obtida em solução de calibração pH 7
-float calibracao_ph4 = 3.34;   // Tensão obtida em solução de calibração pH 4
+float calibracao_ph4 = 3.42;   // Tensão obtida em solução de calibração pH 4
 float calibracao_ph10 = 0.0;  // Tensão obtida em solução de calibração pH 10
 #define UTILIZAR_PH_10 false  // Habilita calibração entre pH 7 e 10
 
@@ -38,7 +38,14 @@ void setup() {
   do {
     telainicio();
   } while (display.nextPage());
-  delay(2000);
+ delay(2500);
+ 
+  display.firstPage();
+  do {
+    telaatencao();
+  } while (display.nextPage());
+ delay(5000);
+
 
   // Inicializa os pinos dos botões
   pinMode(buttonUpPin, INPUT_PULLUP);
@@ -148,10 +155,25 @@ void loop() {
 
 void telainicio(){
     display.setFont(u8g_font_10x20);
-    display.drawStr(5, 14, " BEM-VINDO ");
     display.drawStr(17, 30, " MEDIDOR");
     display.drawStr(25, 45, " DE PH");
+    display.drawStr(17, 60, " DO SOLO");
+
 }
+
+void telaatencao(){
+    display.setFont(u8g_font_10x20);
+    display.drawStr(2, 15, " !!ATENCAO!!");
+    display.setFont(u8g_font_9x15B);
+    display.drawStr(11, 27, "CUIDADO AO ");
+    display.drawStr(11, 39, "MANUSEAR");
+    display.drawStr(11, 51, "A PONTEIRA");
+    display.setFont(u8g_font_9x15B);
+    display.drawStr(11, 64, "SENSIVEL");
+    
+
+}
+
 void displayMenu() {
   display.firstPage();  // Limpa a tela e prepara para o próximo desenho
   do {
@@ -182,17 +204,21 @@ void selectOption() {
 }
 
 void telaph(float ph) {
-  display.setFont(u8g_font_10x20);
-  display.drawStr(27, 16, "PH:");
+  display.setFont(u8g_font_8x13B);
+  display.drawStr(0, 16, "PH ideal: 6.5");
+  display.drawStr(0, 26, "PH atual:");
   String contStr = String(ph, 2);  // Converte o pH para String com 2 casas decimais
-  display.drawStr(57, 16, contStr.c_str());  // Exibe o valor
+  display.drawStr(80, 26, contStr.c_str());  // Exibe o valor
 }
 
 void telaQUANTCAL(float QUANTCAL) {
-  display.setFont(u8g_font_10x20);
-  display.drawStr(25, 45, "QUANTCAL");
+  display.setFont(u8g_font_9x15B);
+  display.drawStr(0, 45, "Calcario");
+  display.setFont(u8g_font_8x13B);
+  display.drawStr(72, 45, "(kg/ha)");
   String contStr = String(QUANTCAL, 3);  // Converte o valor para String com 3 casas decimais
-  display.drawStr(25, 60, contStr.c_str());  // Exibe o valor
+  display.setFont(u8g_font_10x20);
+  display.drawStr(35, 63, contStr.c_str());  // Exibe o valor
 }
 
 void erro01() {
